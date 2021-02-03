@@ -24,6 +24,7 @@ public class Pessoa {
     @Column(unique = true)
     private String email;
     @OneToMany(mappedBy = "pessoa")
+    @OrderBy("createAt ASC")
     @JsonBackReference
     private List<Aposta> apostas;
 

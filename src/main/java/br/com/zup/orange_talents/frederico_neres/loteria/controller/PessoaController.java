@@ -9,9 +9,12 @@ import br.com.zup.orange_talents.frederico_neres.loteria.model.Aposta;
 import br.com.zup.orange_talents.frederico_neres.loteria.model.Pessoa;
 import br.com.zup.orange_talents.frederico_neres.loteria.repository.ApostaRepository;
 import br.com.zup.orange_talents.frederico_neres.loteria.repository.PessoaRepository;
+import br.com.zup.orange_talents.frederico_neres.loteria.validators.SemCPFDuplicadoValidator;
+import br.com.zup.orange_talents.frederico_neres.loteria.validators.SemEmailDuplicadoValidator;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
@@ -28,6 +31,12 @@ public class PessoaController {
     public PessoaController(PessoaRepository pessoaRepository, ApostaRepository apostaRepository) {
         this.pessoaRepository = pessoaRepository;
         this.apostaRepository = apostaRepository;
+    }
+
+    @InitBinder("pessoaSalvarInputDTO")
+    public void init(WebDataBinder webDataBinder) {
+        webDataBinder.addValidators(new SemEmailDuplicadoValidator(pessoaRepository),
+                new SemCPFDuplicadoValidator(pessoaRepository));
     }
 
     @GetMapping
@@ -48,7 +57,7 @@ public class PessoaController {
         return ResponseEntity.status(HttpStatus.OK).body(response);
     }
 
-    @GetMapping("/{pessoaEmail}")
+    @GetMapping("/numeros-aposta/{pessoaEmail}")
     public ResponseEntity<Response<List<PessoaNumerosApostaOutputDTO>>> listarApostasPeloEmail(
             @PathVariable("pessoaEmail") String pessoaEmail) {
 
@@ -67,6 +76,7 @@ public class PessoaController {
                     PessoaNumerosApostaOutputDTO pessoaOutputDTO = new PessoaNumerosApostaOutputDTO();
                     pessoaOutputDTO.setId(aposta.getId());
                     pessoaOutputDTO.setNumerosAposta(aposta.getNumerosAposta());
+                    pessoaOutputDTO.setCreateAt(aposta.getCreateAt());
                     pessoaOutputDTO.setPessoaId(aposta.getPessoa().getId());
                     pessoaOutputDTO.setPessoaNome(aposta.getPessoa().getNome());
                     return pessoaOutputDTO;
@@ -101,10 +111,18 @@ public class PessoaController {
 
     @PostMapping("/numeros-aposta")
     public ResponseEntity<Response<PessoaNumerosApostaOutputDTO>> gerarNumerosAposta(
-            @RequestBody @Valid PessoaNumerosApostaInputDTO pessoaInputDTO) {
+            @RequestBody @Valid PessoaNumerosApostaInputDTO pessoaInputDTO, BindingResult result) {
 
         Response<PessoaNumerosApostaOutputDTO> response = new Response<PessoaNumerosApostaOutputDTO>();
         Pessoa pessoa = pessoaRepository.findByEmail(pessoaInputDTO.getEmail()).orElse(null);
+
+        if(result.hasErrors()) {
+            result.getAllErrors().stream().forEach(error-> {
+                response.getErrors().add(error.getDefaultMessage());
+            });
+
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
 
         if(pessoa == null) {
             response.getErrors().add("Não existe nenhuma pessoa cadastrada com esse e-mail");
@@ -112,16 +130,26 @@ public class PessoaController {
         }
 
         Aposta aposta = new Aposta();
-        aposta.gerarNumerosAposta();
+        aposta.gerarNumerosAposta(1, 60,6);
         aposta.setPessoa(pessoa);
+
+        Boolean existsByIdAndApostasNumerosAposta =
+                pessoaRepository.existsByIdAndApostasNumerosAposta(pessoa.getId(), aposta.getNumerosAposta());
+
+        if(existsByIdAndApostasNumerosAposta    ) {
+            response.getErrors().add("Já existe uma aposta com o número gerado, por favor tente novamente.");
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+        }
 
         aposta = apostaRepository.save(aposta);
         PessoaNumerosApostaOutputDTO pessoaOutputDTO = new PessoaNumerosApostaOutputDTO();
         pessoaOutputDTO.setId(aposta.getId());
         pessoaOutputDTO.setNumerosAposta(aposta.getNumerosAposta());
+        pessoaOutputDTO.setCreateAt(aposta.getCreateAt());
         pessoaOutputDTO.setPessoaId(aposta.getPessoa().getId());
         pessoaOutputDTO.setPessoaNome(aposta.getPessoa().getNome());
 
+        System.out.println(aposta.getCreateAt());
         response.setData(pessoaOutputDTO);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }

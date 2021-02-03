@@ -29,6 +29,14 @@ public class PessoaSalvarInputDTO {
         this.email = email;
     }
 
+    public String getEmail() {
+        return email;
+    }
+
+    public String getCpf() {
+        return cpf;
+    }
+
     public Pessoa criarPessoa() {
         Pessoa pessoa = new Pessoa(nome, cpf, email);
         return pessoa;
